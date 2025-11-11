@@ -444,9 +444,15 @@ class CSVProcessor:
             content = value[3:-1]  # 去掉 '= "' 和最后的 '"'
             return content.strip()
         elif value.startswith('=') and '"' in value:
+            # 尝试匹配引号内的内容
             match = re.search(r'"([^"]*)"', value)
             if match:
                 return match.group(1).strip()
+            # 如果没有匹配到引号内的内容，尝试其他模式
+            elif value.startswith('=') and value.endswith('"'):
+                # 处理 = "XXXXX" 格式
+                content = value[2:-1]
+                return content.strip()
         
         return value
     
@@ -471,6 +477,27 @@ class CSVProcessor:
                 df[col] = df[col].str.strip()
             
             return df
+        except UnicodeDecodeError:
+            # 如果GBK解码失败，尝试UTF-8
+            try:
+                from io import StringIO
+                df = pd.read_csv(StringIO(file_content), encoding='utf-8')
+                
+                # 清理列名，去除空格
+                df.columns = [col.strip() for col in df.columns]
+                
+                # 去除空列
+                df = df.dropna(axis=1, how='all')
+                
+                # 清理数据 - 对所有字段都应用Excel公式清理
+                for col in df.columns:
+                    df[col] = df[col].astype(str)
+                    df[col] = df[col].apply(CSVProcessor.clean_excel_formula)
+                    df[col] = df[col].str.strip()
+                
+                return df
+            except Exception as e:
+                raise Exception(f"处理CSV文件失败，尝试了GBK和UTF-8编码: {e}")
         except Exception as e:
             raise Exception(f"处理CSV文件失败: {e}")
     
@@ -562,6 +589,9 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
         
         db_properties = db_structure.get("properties", {})
         
+        # 打印数据库结构以便调试
+        print(f"交易数据库字段: {list(db_properties.keys())}")
+        
         # 创建映射关系
         mapping = {
             "证券代码": "证券代码",
@@ -575,8 +605,12 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
             "印花税": "印花税",
             "过户费": "过户费",
             "资金余额": "资金余额",
+            "股份余额": "股份余额",
             "委托编号": "委托编号",
+            "成交编号": "成交编号",
             "交易市场": "交易市场",
+            "股东账号": "股东账号",
+            "币种": "币种",
             "成交日期": "交易日期"
         }
         
@@ -606,6 +640,9 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
                     value = row[csv_col]
                     prop_type = db_properties[notion_prop].get("type", "rich_text")
                     
+                    # 添加调试信息
+                    print(f"处理字段: {csv_col} -> {notion_prop}, 值: {value}, 类型: {prop_type}")
+                    
                     # 特殊处理交易日期字段，合并日期和时间
                     if csv_col == "成交日期" and notion_prop == "交易日期":
                         time_value = row.get("成交时间", "")
@@ -619,20 +656,23 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
                     
                     if notion_value is not None:
                         properties_data[notion_prop] = notion_value
+                        print(f"成功设置字段 {notion_prop}: {notion_value}")
+                    else:
+                        print(f"警告: 字段 {notion_prop} 值为空或无效，跳过设置")
             
             # 处理股票持仓关联
             if "股票持仓" in db_properties and "证券代码" in row:
-                # 确保证券代码和名称已经过Excel公式清理
+                # 获取交易市场信息
                 stock_code = str(row["证券代码"]).strip()
                 stock_name = str(row["证券名称"]).strip()
-                
-                # 再次确保证券代码没有Excel公式格式
-                stock_code = CSVProcessor.clean_excel_formula(stock_code)
-                stock_name = CSVProcessor.clean_excel_formula(stock_name)
-                
-                # 获取交易市场信息
                 market = str(row.get("交易市场", "")).strip()
-                market = CSVProcessor.clean_excel_formula(market)
+                
+                # 确保股票代码不为空
+                if not stock_code:
+                    print(f"警告: 证券代码为空，跳过持仓关联")
+                    continue
+                
+                print(f"正在处理股票持仓关联: {stock_code} - {stock_name} - {market}")
                 
                 # 确保股票代码不为空
                 if not stock_code:
@@ -665,7 +705,10 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
             
             # 添加备注字段，标注为外部导入
             if "备注" in db_properties:
-                import_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # 使用UTC+8时区
+                from datetime import timezone, timedelta
+                tz = timezone(timedelta(hours=8))
+                import_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
                 properties_data["备注"] = {
                     "rich_text": [{"text": {"content": f"外部导入 - {import_time}"}}]
                 }
