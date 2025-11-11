@@ -1,0 +1,12 @@
+services:
+  notion-csv-importer:
+    build: .
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./.env:/app/.env:ro
+    env_file:
+      - ./.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
