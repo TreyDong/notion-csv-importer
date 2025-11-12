@@ -31,10 +31,60 @@
             padding: 0 1rem;
         }
         
+        .form-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .settings-container {
+            margin-top: 1rem;
+        }
+        
+        .settings-toggle {
+            background: none;
+            border: 2px solid var(--primary-color);
+            border-radius: 6px;
+            color: var(--primary-color);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.8rem 1.5rem;
+            font-size: 1.2rem;
+            margin-top: 0.5rem;
+        }
+        
+        .settings-icon {
+            font-size: 1.5rem;
+            margin-right: 0.5rem;
+        }
+        
+        .settings-icon {
+            font-size: 1rem;
+            margin-right: 0.25rem;
+        }
+        
+        .settings-panel {
+            display: none;
+            margin-top: 0.5rem;
+            padding: 1rem;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .settings-panel.show {
+            display: block;
+        }
+        
         .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            box-shadow: none;
             overflow: hidden;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
@@ -45,25 +95,35 @@
         }
         
         .card-header {
-            background: linear-gradient(135deg, var(--primary-color), #6a89ff);
+            background-color: var(--primary-color);
             color: white;
             font-weight: 600;
-            padding: 1.5rem;
+            padding: 1rem;
             border-bottom: none;
         }
         
         .card-body {
-            padding: 2rem;
+            padding: 1.5rem;
         }
         
         .upload-area {
             border: 2px dashed #d0d7e0;
             border-radius: 10px;
-            padding: 3rem 2rem;
+            padding: 8rem 2rem;
             text-align: center;
             background-color: #f8fafc;
             transition: all 0.3s ease;
             cursor: pointer;
+            margin-bottom: 2rem;
+        }
+        
+        .upload-area h5 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .upload-area p {
+            font-size: 1.2rem;
         }
         
         .upload-area:hover, .upload-area.dragover {
@@ -84,9 +144,10 @@
         }
         
         .form-control, .form-select {
-            border-radius: 8px;
+            border-radius: 6px;
             border: 1px solid #ced4da;
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
             transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
         }
         
@@ -96,12 +157,14 @@
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary-color), #6a89ff);
+            background-color: var(--primary-color);
             border: none;
             border-radius: 8px;
-            padding: 0.75rem 2rem;
+            padding: 1.5rem 2rem;
             font-weight: 600;
             transition: all 0.3s ease;
+            width: 100%;
+            font-size: 1.5rem;
         }
         
         .btn-primary:hover {
@@ -220,65 +283,71 @@
                 <h1 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>CSV到Notion导入工具</h1>
             </div>
             <div class="card-body">
-                <div class="info-card">
-                    <h5><i class="bi bi-info-circle-fill"></i>功能说明</h5>
-                    <p class="mb-0">上传CSV文件并自动导入到Notion数据库，支持自动创建持仓记录关联。</p>
-                </div>
-                
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <div class="mb-4">
-                        <label for="file" class="form-label">选择CSV文件</label>
+                <form id="uploadForm" enctype="multipart/form-data" class="form-center">
+                    <div class="mb-4 w-100">
+                        <label for="file" class="form-label text-center d-block">选择文件</label>
                         <div class="upload-area" id="uploadArea">
                             <i class="bi bi-file-earmark-arrow-up"></i>
                             <h5>拖拽文件到此处或点击选择</h5>
-                            <p class="text-muted mb-0">支持 .csv 格式文件</p>
-                            <input type="file" id="file" name="file" accept=".csv" style="display: none;">
+                            <p class="text-muted mb-0">支持 .txt, .csv, .xls, .xlsx 格式文件</p>
+                            <input type="file" id="file" name="file" accept=".txt,.csv,.xls,.xlsx" style="display: none;">
                         </div>
                         <div class="file-info" id="fileInfo" style="display: none;"></div>
                     </div>
                     
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label for="limit" class="form-label">导入行数限制</label>
-                            <input type="number" class="form-control" id="limit" name="limit" value="0" min="0">
-                            <div class="form-text">设置为0表示导入全部数据</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="batch_size" class="form-label">批量处理大小</label>
-                            <input type="number" class="form-control" id="batch_size" name="batch_size" value="10" min="1">
-                            <div class="form-text">每批处理的记录数</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="delay" class="form-label">请求间隔(秒)</label>
-                            <input type="number" class="form-control" id="delay" name="delay" value="1" min="0" step="0.1">
-                            <div class="form-text">避免API频率限制</div>
-                        </div>
-                    </div>
                     
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="encoding" class="form-label">文件编码</label>
-                            <select class="form-select" id="encoding" name="encoding">
-                                <option value="gbk">GBK (中文默认)</option>
-                                <option value="utf-8">UTF-8</option>
-                                <option value="gb2312">GB2312</option>
-                            </select>
+                    <div class="text-center">
+                        <div class="d-grid gap-2 mt-4" style="max-width: 300px; margin: 0 auto;">
+                            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                                <i class="bi bi-upload me-2"></i>上传并导入
+                                <div class="loading-spinner"></div>
+                            </button>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="autoCreate" class="form-label">自动创建持仓</label>
-                            <select class="form-select" id="autoCreate" name="autoCreate">
-                                <option value="true" selected>启用</option>
-                                <option value="false">禁用</option>
-                            </select>
-                            <div class="form-text">自动创建不存在的持仓记录</div>
+                        
+                        <div class="settings-container mt-2">
+                            <button type="button" class="settings-toggle" id="settingsToggle">
+                                <i class="bi bi-gear settings-icon"></i> 设置
+                            </button>
+                            
+                            <div class="settings-panel" id="settingsPanel">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="limit" class="form-label">导入行数限制</label>
+                                        <input type="number" class="form-control" id="limit" name="limit" value="0" min="0">
+                                        <div class="form-text">设置为0表示导入全部数据</div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="batch_size" class="form-label">批量处理大小</label>
+                                        <input type="number" class="form-control" id="batch_size" name="batch_size" value="10" min="1">
+                                        <div class="form-text">每批处理的记录数</div>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="delay" class="form-label">请求间隔(秒)</label>
+                                        <input type="number" class="form-control" id="delay" name="delay" value="1" min="0" step="0.1">
+                                        <div class="form-text">避免API频率限制</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="encoding" class="form-label">文件编码</label>
+                                        <select class="form-select" id="encoding" name="encoding">
+                                            <option value="gbk">GBK (中文默认)</option>
+                                            <option value="utf-8">UTF-8</option>
+                                            <option value="gb2312">GB2312</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoCreate" class="form-label">自动创建持仓</label>
+                                        <select class="form-select" id="autoCreate" name="autoCreate">
+                                            <option value="true" selected>启用</option>
+                                            <option value="false">禁用</option>
+                                        </select>
+                                        <div class="form-text">自动创建不存在的持仓记录</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
-                            <i class="bi bi-upload me-2"></i>上传并导入
-                            <div class="loading-spinner"></div>
-                        </button>
                     </div>
                     
                     <div class="progress" id="progressBar">
@@ -290,16 +359,6 @@
                     <div class="alert" id="statusAlert" role="alert"></div>
                 </div>
                 
-                <div class="mt-4">
-                    <h5><i class="bi bi-gear me-2"></i>系统特性</h5>
-                    <ul class="feature-list">
-                        <li><i class="bi bi-check-circle-fill"></i>自动清理Excel公式格式数据</li>
-                        <li><i class="bi bi-check-circle-fill"></i>智能识别并创建持仓记录</li>
-                        <li><i class="bi bi-check-circle-fill"></i>支持多种文件编码格式</li>
-                        <li><i class="bi bi-check-circle-fill"></i>批量处理避免API限制</li>
-                        <li><i class="bi bi-check-circle-fill"></i>重复数据检测与跳过</li>
-                    </ul>
-                </div>
             </div>
         </div>
     </div>
@@ -387,13 +446,21 @@
                 }
             }
             
+            // 切换设置面板
+            const settingsToggle = document.getElementById('settingsToggle');
+            const settingsPanel = document.getElementById('settingsPanel');
+            
+            settingsToggle.addEventListener('click', function() {
+                settingsPanel.classList.toggle('show');
+            });
+            
             // 表单提交
             uploadForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 
                 const file = fileInput.files[0];
                 if (!file) {
-                    showStatus('请选择要上传的CSV文件', 'danger');
+                    showStatus('请选择要上传的文件', 'danger');
                     return;
                 }
                 
