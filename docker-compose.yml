@@ -2,11 +2,15 @@ services:
   notion-csv-importer:
     image: treydong/notion-csv-importer:latest
     ports:
-      - "8002:8000"
-    volumes:
-      - ./.env:/app/.env:ro
-    env_file:
-      - ./.env
+      - "80:8000"
     environment:
       - PYTHONUNBUFFERED=1
-    restart: unless-stopped
+      - NOTION_TOKEN=${NOTION_TOKEN}
+      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID}
+      - NOTION_HOLDINGS_DATABASE_ID=${NOTION_HOLDINGS_DATABASE_ID}
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
