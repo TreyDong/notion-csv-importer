@@ -429,7 +429,7 @@ class NotionAPI:
             return False
 
 class CSVProcessor:
-    """CSV数据处理类"""
+    """CSV和Excel数据处理类"""
     
     @staticmethod
     def clean_excel_formula(value: Any) -> str:
@@ -476,6 +476,21 @@ class CSVProcessor:
                 df[col] = df[col].apply(CSVProcessor.clean_excel_formula)
                 df[col] = df[col].str.strip()
             
+            # 特殊处理证券代码字段，确保6位数字格式
+            if '证券代码' in df.columns:
+                # 确保证券代码是6位数字格式，补齐前导零
+                def format_stock_code(code):
+                    code_str = str(code).strip()
+                    # 如果是纯数字且长度小于6，补齐前导零
+                    if code_str.isdigit() and len(code_str) < 6:
+                        code_str = code_str.zfill(6)
+                    # 如果是纯数字且长度大于6，截取前6位
+                    elif code_str.isdigit() and len(code_str) > 6:
+                        code_str = code_str[:6]
+                    return code_str
+                
+                df['证券代码'] = df['证券代码'].apply(format_stock_code)
+            
             return df
         except UnicodeDecodeError:
             # 如果GBK解码失败，尝试UTF-8
@@ -495,11 +510,163 @@ class CSVProcessor:
                     df[col] = df[col].apply(CSVProcessor.clean_excel_formula)
                     df[col] = df[col].str.strip()
                 
+                # 特殊处理证券代码字段，确保6位数字格式
+                if '证券代码' in df.columns:
+                    # 确保证券代码是6位数字格式，补齐前导零
+                    def format_stock_code(code):
+                        code_str = str(code).strip()
+                        # 如果是纯数字且长度小于6，补齐前导零
+                        if code_str.isdigit() and len(code_str) < 6:
+                            code_str = code_str.zfill(6)
+                        # 如果是纯数字且长度大于6，截取前6位
+                        elif code_str.isdigit() and len(code_str) > 6:
+                            code_str = code_str[:6]
+                        return code_str
+                    
+                    df['证券代码'] = df['证券代码'].apply(format_stock_code)
+                
                 return df
             except Exception as e:
                 raise Exception(f"处理CSV文件失败，尝试了GBK和UTF-8编码: {e}")
         except Exception as e:
             raise Exception(f"处理CSV文件失败: {e}")
+    
+    @staticmethod
+    def process_excel(file_content: bytes) -> pd.DataFrame:
+        """处理Excel文件（.xls和.xlsx）"""
+        try:
+            from io import BytesIO
+            import tempfile
+            import os
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xls') as temp_file:
+                temp_file.write(file_content)
+                temp_file_path = temp_file.name
+            
+            try:
+                # 尝试使用openpyxl引擎（适用于.xlsx文件）
+                try:
+                    df = pd.read_excel(temp_file_path, engine='openpyxl')
+                except:
+                    # 如果openpyxl失败，尝试xlrd引擎（适用于.xls文件）
+                    try:
+                        df = pd.read_excel(temp_file_path, engine='xlrd')
+                    except:
+                        # 如果都失败，尝试作为制表符分隔的文本文件处理
+                        df = pd.read_csv(temp_file_path, sep='\t', encoding='gbk')
+                
+                # 清理列名，去除空格
+                df.columns = [col.strip() for col in df.columns]
+                
+                # 去除空列
+                df = df.dropna(axis=1, how='all')
+                
+                # 清理数据 - 对所有字段都应用Excel公式清理
+                for col in df.columns:
+                    df[col] = df[col].astype(str)
+                    df[col] = df[col].apply(CSVProcessor.clean_excel_formula)
+                    df[col] = df[col].str.strip()
+                
+                # 特殊处理证券代码字段，确保保持文本格式
+                if '证券代码' in df.columns:
+                    # 确保证券代码是6位数字格式，补齐前导零
+                    def format_stock_code(code):
+                        code_str = str(code).strip()
+                        # 如果是纯数字且长度小于6，补齐前导零
+                        if code_str.isdigit() and len(code_str) < 6:
+                            code_str = code_str.zfill(6)
+                        return code_str
+                    
+                    df['证券代码'] = df['证券代码'].apply(format_stock_code)
+                
+                return df
+                
+            finally:
+                # 删除临时文件
+                os.unlink(temp_file_path)
+                
+        except Exception as e:
+            raise Exception(f"处理Excel文件失败: {e}")
+    
+    @staticmethod
+    def process_txt(file_content: bytes, encoding: str = 'gbk') -> pd.DataFrame:
+        """处理TXT文件（固定宽度或多空格分隔）"""
+        try:
+            from io import StringIO
+            import tempfile
+            import os
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.txt', mode='w+b') as temp_file:
+                temp_file.write(file_content)
+                temp_file_path = temp_file.name
+            
+            try:
+                # 定义标准的列名
+                expected_columns = [
+                    '成交日期', '成交时间', '证券代码', '证券名称', '委托方向',
+                    '成交数量', '成交均价', '成交金额', '佣金', '其他费用',
+                    '印花税', '过户费', '资金余额', '股份余额', '委托编号',
+                    '成交编号', '交易市场', '股东账号', '币种'
+                ]
+
+                # 定义需要作为字符串读取的列（避免数字类型自动转换导致前导零丢失）
+                dtype_spec = {
+                    '证券代码': str,
+                    '委托编号': str,
+                    '成交编号': str,
+                    '股东账号': str
+                }
+
+                # 首先尝试多空格分隔
+                try:
+                    df = pd.read_csv(temp_file_path, sep=r'\s{2,}', encoding=encoding, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
+                    print(f"多空格分隔成功，行数: {len(df)}")
+                except Exception as e1:
+                    print(f"多空格分隔失败: {e1}")
+                    # 如果多空格分隔失败，尝试单空格分隔
+                    try:
+                        df = pd.read_csv(temp_file_path, sep=r'\s+', encoding=encoding, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
+                        print(f"单空格分隔成功，行数: {len(df)}")
+                    except Exception as e2:
+                        print(f"单空格分隔失败: {e2}")
+                        # 如果空格分隔都失败，尝试固定宽度格式
+                        try:
+                            df = pd.read_fwf(temp_file_path, encoding=encoding, header=None, names=expected_columns, dtype=dtype_spec)
+                            print(f"固定宽度格式成功，行数: {len(df)}")
+                        except Exception as e3:
+                            print(f"固定宽度格式失败: {e3}")
+                            # 最后尝试制表符分隔
+                            try:
+                                df = pd.read_csv(temp_file_path, sep='\t', encoding=encoding, header=None, names=expected_columns, dtype=dtype_spec)
+                                print(f"制表符分隔成功，行数: {len(df)}")
+                            except Exception as e4:
+                                print(f"制表符分隔失败: {e4}")
+                                raise e4
+                
+                # 清理列名，去除空格
+                df.columns = [col.strip() for col in df.columns]
+                
+                # 去除空列
+                df = df.dropna(axis=1, how='all')
+                
+                # 清理数据 - 对所有字段都应用Excel公式清理
+                for col in df.columns:
+                    if col not in ['证券代码', '委托编号', '成交编号', '股东账号']:
+                        # 非字符串字段才转换类型
+                        df[col] = df[col].astype(str)
+                    df[col] = df[col].apply(CSVProcessor.clean_excel_formula)
+                    df[col] = df[col].str.strip()
+
+                return df
+                
+            finally:
+                # 删除临时文件
+                os.unlink(temp_file_path)
+                
+        except Exception as e:
+            raise Exception(f"处理TXT文件失败: {e}")
     
     @staticmethod
     def convert_value_to_notion_format(value: Any, property_type: str) -> Optional[Dict]:
@@ -566,7 +733,7 @@ async def read_root():
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"), limit: int = Form(5), batch_size: int = Form(10), delay: int = Form(1)):
-    """上传并处理CSV文件"""
+    """上传并处理CSV/Excel文件"""
     
     try:
         # 检查环境变量
@@ -579,8 +746,20 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
         # 读取文件内容
         content = await file.read()
         
-        # 处理CSV数据
-        df = CSVProcessor.process_csv(content.decode(encoding), encoding)
+        # 根据文件扩展名选择处理方法
+        file_extension = file.filename.lower().split('.')[-1] if file.filename else ''
+        
+        if file_extension in ['xls', 'xlsx']:
+            # 处理Excel文件
+            df = CSVProcessor.process_excel(content)
+        elif file_extension == 'csv':
+            # 处理CSV文件
+            df = CSVProcessor.process_csv(content.decode(encoding), encoding)
+        elif file_extension == 'txt':
+            # 处理TXT文件
+            df = CSVProcessor.process_txt(content, encoding)
+        else:
+            raise HTTPException(status_code=400, detail="不支持的文件格式，请上传CSV、Excel或TXT文件")
         
         # 获取数据库结构
         db_structure = notion_api.get_database_structure(database_id)
@@ -592,8 +771,28 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
         # 打印数据库结构以便调试
         print(f"交易数据库字段: {list(db_properties.keys())}")
         
-        # 创建映射关系
-        mapping = {
+        # 创建映射关系 - 使用智能匹配来处理字段名中的空格
+        def find_matching_field(csv_field, db_properties):
+            """在数据库属性中查找匹配的字段"""
+            # 首先尝试精确匹配
+            if csv_field in db_properties:
+                return csv_field
+            
+            # 尝试去除空格后匹配
+            clean_field = csv_field.strip()
+            if clean_field in db_properties:
+                return clean_field
+            
+            # 尝试在数据库字段中查找包含目标字段的项
+            for db_field in db_properties.keys():
+                if csv_field in db_field or clean_field in db_field:
+                    return db_field
+            
+            # 如果都没找到，返回原字段名
+            return csv_field
+        
+        # 基础映射关系
+        base_mapping = {
             "证券代码": "证券代码",
             "证券名称": "证券名称",
             "委托方向": "委托方向",
@@ -613,6 +812,12 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
             "币种": "币种",
             "成交日期": "交易日期"
         }
+        
+        # 创建智能映射
+        mapping = {}
+        for csv_field, notion_field in base_mapping.items():
+            matched_field = find_matching_field(notion_field, db_properties)
+            mapping[csv_field] = matched_field
         
         # 限制导入行数
         if limit > 0 and len(df) > limit:
