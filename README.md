@@ -24,16 +24,9 @@
 │   └── index.html       # Web界面
 ├── static/              # 静态资源
 ├── scripts/             # 脚本文件
-│   └── build_and_push.sh
-├── tests/               # 测试文件
-│   └── test_app.py
-├── docs/                # 文档
-│   ├── README.md
-│   ├── DEPLOYMENT.md
-│   ├── DOCKER_PACKAGING.md
-│   ├── DOCKER_README.md
-│   └── QUICK_DEPLOY.md
+│   └── build_and_push.sh  # 构建和推送Docker镜像脚本
 ├── .env.example         # 环境变量示例
+├── .env                 # 环境变量配置(本地)
 └── .gitignore           # Git忽略文件
 ```
 
@@ -63,7 +56,52 @@ docker-compose up -d
 http://localhost:8002
 ```
 
+
 ### 本地运行
+
+1. 安装依赖
+```bash
+pip install -r requirements.txt
+```
+
+2. 设置环境变量
+```bash
+cp .env.example .env
+# 编辑.env文件，填入您的Notion API token和数据库ID
+```
+
+3. 运行应用
+```bash
+python app.py
+```
+
+## 部署说明
+
+### Docker部署(推荐)
+
+1. 确保已安装Docker和Docker Compose
+2. 配置环境变量
+```bash
+cp .env.example .env
+# 编辑.env文件，填入必要的配置信息
+```
+
+3. 启动服务
+```bash
+docker-compose up -d
+```
+
+4. 停止服务
+```bash
+docker-compose down
+```
+
+5. 查看日志
+```bash
+docker-compose logs -f
+```
+
+### 手动部署
 
 1. 安装依赖
 ```bash
@@ -77,13 +115,28 @@ export NOTION_DATABASE_ID="your_database_id"
 export NOTION_HOLDINGS_DATABASE_ID="your_holdings_database_id"
 ```
 
-3. 运行应用
+3. 使用Gunicorn作为生产服务器
 ```bash
-python app.py
+gunicorn -w 4 -b 0.0.0.0:8000 "app:create_app()"
 ```
 
-## 配置说明
+## Docker镜像构建与推送
 
+项目提供了便捷的脚本用于构建和推送Docker镜像:
+
+```bash
+# 构建并推送镜像
+./scripts/build_and_push.sh
+```
+
+脚本会自动完成以下操作:
+- 检查Docker是否安装
+- 登录Docker Hub(如需)
+- 构建Docker镜像
+- 标记镜像版本
+- 推送镜像到Docker Hub
+
+## 配置说明
 ### 环境变量
 
 | 变量名 | 描述 | 必需 |
