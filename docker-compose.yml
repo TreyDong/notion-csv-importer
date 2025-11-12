@@ -1,6 +1,6 @@
 services:
   notion-csv-importer:
-    build: .
+    image: treydong/notion-csv-importer:latest
     ports:
       - "8002:8000"
     volumes:
