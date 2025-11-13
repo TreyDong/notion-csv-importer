@@ -3,6 +3,18 @@
 CSV到Notion数据导入的完整Web应用
 包含文件上传、数据库关联等功能
 """
+import logging
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 import os
 import json
@@ -48,7 +60,7 @@ class NotionAPI:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"获取数据库结构失败: {e}")
+            logger.error(f"获取数据库结构失败: {e}")
             return None
     
     def query_holdings(self, database_id: str, stock_code: str) -> Optional[Dict]:
@@ -56,7 +68,7 @@ class NotionAPI:
         try:
             # 确保输入参数有效
             if not stock_code or not stock_code.strip():
-                print("错误: 证券代码为空，无法查询持仓记录")
+                logger.error("错误: 证券代码为空，无法查询持仓记录")
                 return None
             
             stock_code = stock_code.strip()
@@ -65,7 +77,7 @@ class NotionAPI:
             # 首先获取持仓数据库的结构，以确定正确的字段类型
             holdings_structure = self.get_database_structure(database_id)
             if not holdings_structure:
-                print("无法获取持仓数据库结构，使用默认配置")
+                logger.warning("无法获取持仓数据库结构，使用默认配置")
                 # 使用默认配置
                 payload = {
                     "filter": {
@@ -80,12 +92,12 @@ class NotionAPI:
                 holdings_properties = holdings_structure.get("properties", {})
                 
                 # 打印数据库结构以便调试
-                print(f"持仓数据库字段: {list(holdings_properties.keys())}")
+                logger.info(f"持仓数据库字段: {list(holdings_properties.keys())}")
                 
                 # 确定证券代码字段的类型
                 if "证券代码" in holdings_properties:
                     prop_type = holdings_properties["证券代码"].get("type", "rich_text")
-                    print(f"证券代码字段类型: {prop_type}")
+                    logger.info(f"证券代码字段类型: {prop_type}")
                     if prop_type == "title":
                         payload = {
                             "filter": {
@@ -105,42 +117,42 @@ class NotionAPI:
                             }
                         }
                     else:
-                        print(f"不支持的证券代码字段类型: {prop_type}")
+                        logger.error(f"不支持的证券代码字段类型: {prop_type}")
                         return None
                 else:
-                    print("持仓数据库中没有找到证券代码字段")
+                    logger.error("持仓数据库中没有找到证券代码字段")
                     # 尝试查找可能的替代字段
                     possible_fields = [k for k in holdings_properties.keys() if "代码" in k or "code" in k.lower()]
                     if possible_fields:
-                        print(f"找到可能的替代字段: {possible_fields}")
+                        logger.info(f"找到可能的替代字段: {possible_fields}")
                     return None
             
-            print(f"正在查询持仓记录: {stock_code}")
-            print(f"查询请求: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+            logger.info(f"正在查询持仓记录: {stock_code}")
+            logger.debug(f"查询请求: {json.dumps(payload, ensure_ascii=False, indent=2)}")
             response = requests.post(url, headers=self.headers, json=payload)
             
             # 检查响应状态
             if response.status_code == 200:
                 data = response.json()
                 results = data.get("results", [])
-                print(f"查询结果数量: {len(results)}")
+                logger.info(f"查询结果数量: {len(results)}")
                 if results:
                     holding_id = results[0].get("id")
-                    print(f"找到持仓记录: {stock_code}，ID: {holding_id}")
+                    logger.info(f"找到持仓记录: {stock_code}，ID: {holding_id}")
                     return results[0]  # 返回第一个匹配的结果
                 else:
-                    print(f"未找到持仓记录: {stock_code}")
+                    logger.info(f"未找到持仓记录: {stock_code}")
                     return None
             else:
-                print(f"查询持仓记录失败，状态码: {response.status_code}")
-                print(f"响应内容: {response.text}")
+                logger.error(f"查询持仓记录失败，状态码: {response.status_code}")
+                logger.error(f"响应内容: {response.text}")
                 return None
             
         except requests.exceptions.RequestException as e:
-            print(f"查询持仓记录时网络错误: {str(e)}")
+            logger.error(f"查询持仓记录时网络错误: {str(e)}")
             return None
         except Exception as e:
-            print(f"查询持仓记录时未知错误: {str(e)}")
+            logger.error(f"查询持仓记录时未知错误: {str(e)}")
             return None
     
     def create_holding(self, database_id: str, stock_code: str, stock_name: str, market: str = None) -> Optional[str]:
@@ -148,7 +160,7 @@ class NotionAPI:
         try:
             # 确保输入参数有效
             if not stock_code or not stock_code.strip():
-                print("错误: 证券代码为空，无法创建持仓记录")
+                logger.error("错误: 证券代码为空，无法创建持仓记录")
                 return None
             
             if not stock_name or not stock_name.strip():
@@ -162,7 +174,7 @@ class NotionAPI:
             # 首先获取持仓数据库的结构，以确定正确的字段类型
             holdings_structure = self.get_database_structure(database_id)
             if not holdings_structure:
-                print("无法获取持仓数据库结构，使用默认配置")
+                logger.warning("无法获取持仓数据库结构，使用默认配置")
                 # 使用默认配置
                 payload = {
                     "parent": {"database_id": database_id},
@@ -184,12 +196,12 @@ class NotionAPI:
                 }
                 
                 # 打印数据库结构以便调试
-                print(f"持仓数据库字段: {list(holdings_properties.keys())}")
+                logger.info(f"持仓数据库字段: {list(holdings_properties.keys())}")
                 
                 # 处理证券代码字段
                 if "证券代码" in holdings_properties:
                     prop_type = holdings_properties["证券代码"].get("type", "title")
-                    print(f"证券代码字段类型: {prop_type}")
+                    logger.info(f"证券代码字段类型: {prop_type}")
                     if prop_type == "title":
                         payload["properties"]["证券代码"] = {
                             "title": [{"text": {"content": stock_code}}]
@@ -199,10 +211,10 @@ class NotionAPI:
                             "rich_text": [{"text": {"content": stock_code}}]
                         }
                     else:
-                        print(f"不支持的证券代码字段类型: {prop_type}")
+                        logger.error(f"不支持的证券代码字段类型: {prop_type}")
                         return None
                 else:
-                    print("警告: 持仓数据库中没有找到证券代码字段")
+                    logger.warning("警告: 持仓数据库中没有找到证券代码字段")
                 
                 # 处理证券名称字段 - 尝试多种可能的字段名
                 name_fields = ["证券名称", "名称", "股票名称", "Name"]
@@ -210,7 +222,7 @@ class NotionAPI:
                 for field_name in name_fields:
                     if field_name in holdings_properties:
                         prop_type = holdings_properties[field_name].get("type", "rich_text")
-                        print(f"找到名称字段: {field_name}，类型: {prop_type}")
+                        logger.info(f"找到名称字段: {field_name}，类型: {prop_type}")
                         if prop_type == "rich_text":
                             payload["properties"][field_name] = {
                                 "rich_text": [{"text": {"content": stock_name}}]
@@ -223,7 +235,7 @@ class NotionAPI:
                         break
                 
                 if not name_field_found:
-                    print("警告: 持仓数据库中没有找到任何名称字段")
+                    logger.warning("警告: 持仓数据库中没有找到任何名称字段")
                 
                 # 处理市场字段
                 if market:
@@ -237,7 +249,7 @@ class NotionAPI:
                                 payload["properties"][field_name] = {
                                     "select": {"name": market_value}
                                 }
-                                print(f"设置市场字段 {field_name}: {market_value}")
+                                logger.info(f"设置市场字段 {field_name}: {market_value}")
                                 break
                 
                 # 处理股票类型字段
@@ -258,7 +270,7 @@ class NotionAPI:
                             payload["properties"][field_name] = {
                                 "select": {"name": stock_type}
                             }
-                            print(f"设置类型字段 {field_name}: {stock_type}")
+                            logger.info(f"设置类型字段 {field_name}: {stock_type}")
                             break
                 
                 # 处理交易所代码字段
@@ -277,7 +289,7 @@ class NotionAPI:
                             payload["properties"][field_name] = {
                                 "rich_text": [{"text": {"content": exchange_code}}]
                             }
-                            print(f"设置交易所代码字段 {field_name}: {exchange_code}")
+                            logger.info(f"设置交易所代码字段 {field_name}: {exchange_code}")
                             break
                 
                 # 设置建仓日期为今天
@@ -290,7 +302,7 @@ class NotionAPI:
                             payload["properties"][field_name] = {
                                 "date": {"start": today}
                             }
-                            print(f"设置日期字段 {field_name}: {today}")
+                            logger.info(f"设置日期字段 {field_name}: {today}")
                             break
                 
                 # 设置初始持仓数量为0
@@ -302,7 +314,7 @@ class NotionAPI:
                             payload["properties"][field_name] = {
                                 "number": 0
                             }
-                            print(f"设置数量字段 {field_name}: 0")
+                            logger.info(f"设置数量字段 {field_name}: 0")
                             break
                 
                 # 设置初始成本价为0
@@ -314,7 +326,7 @@ class NotionAPI:
                             payload["properties"][field_name] = {
                                 "number": 0
                             }
-                            print(f"设置价格字段 {field_name}: 0")
+                            logger.info(f"设置价格字段 {field_name}: 0")
                             break
                 
                 # 处理股票字段，按照"股票名称(股票代码)"格式填充
@@ -332,7 +344,7 @@ class NotionAPI:
                             payload["properties"][field_name] = {
                                 "rich_text": [{"text": {"content": stock_display_name}}]
                             }
-                        print(f"设置股票字段 {field_name}: {stock_display_name}")
+                        logger.info(f"设置股票字段 {field_name}: {stock_display_name}")
                         stock_field_found = True
                         break
                 
@@ -342,7 +354,7 @@ class NotionAPI:
                     payload["properties"]["Name"] = {
                         "title": [{"text": {"content": stock_display_name}}]
                     }
-                    print(f"设置Name字段: {stock_display_name}")
+                    logger.info(f"设置Name字段: {stock_display_name}")
                 
                 # 如果没有设置任何属性，至少设置一个标题
                 if not payload["properties"]:
@@ -350,28 +362,28 @@ class NotionAPI:
                     payload["properties"]["Name"] = {
                         "title": [{"text": {"content": stock_display_name}}]
                     }
-                    print(f"设置默认Name字段: {stock_display_name}")
+                    logger.info(f"设置默认Name字段: {stock_display_name}")
             
-            print(f"正在创建持仓记录: {stock_code} - {stock_name}")
-            print(f"请求数据: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+            logger.info(f"正在创建持仓记录: {stock_code} - {stock_name}")
+            logger.debug(f"请求数据: {json.dumps(payload, ensure_ascii=False, indent=2)}")
             response = requests.post(url, headers=self.headers, json=payload)
             
             # 检查响应状态
             if response.status_code == 200:
                 result = response.json()
                 holding_id = result.get("id")
-                print(f"成功创建持仓记录，ID: {holding_id}")
+                logger.info(f"成功创建持仓记录，ID: {holding_id}")
                 return holding_id
             else:
-                print(f"创建持仓记录失败，状态码: {response.status_code}")
-                print(f"响应内容: {response.text}")
+                logger.error(f"创建持仓记录失败，状态码: {response.status_code}")
+                logger.error(f"响应内容: {response.text}")
                 return None
             
         except requests.exceptions.RequestException as e:
-            print(f"创建持仓记录时网络错误: {str(e)}")
+            logger.error(f"创建持仓记录时网络错误: {str(e)}")
             return None
         except Exception as e:
-            print(f"创建持仓记录时未知错误: {str(e)}")
+            logger.error(f"创建持仓记录时未知错误: {str(e)}")
             return None
     
     def get_existing_entrust_numbers(self, database_id: str) -> set:
@@ -405,10 +417,10 @@ class NotionAPI:
                 # 设置下一页的游标
                 payload["start_cursor"] = data.get("next_cursor")
             
-            print(f"已获取 {len(existing_numbers)} 个现有委托编号")
+            logger.info(f"已获取 {len(existing_numbers)} 个现有委托编号")
             return existing_numbers
         except Exception as e:
-            print(f"获取现有委托编号失败: {e}")
+            logger.error(f"获取现有委托编号失败: {e}")
             return set()
     
     def create_page(self, database_id: str, properties_data: Dict) -> bool:
@@ -425,7 +437,7 @@ class NotionAPI:
             response.raise_for_status()
             return True
         except Exception as e:
-            print(f"创建页面失败: {e}")
+            logger.error(f"创建页面失败: {e}")
             return False
 
 class CSVProcessor:
@@ -623,7 +635,7 @@ class CSVProcessor:
                 encodings_to_try = [encoding, 'utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
                 
                 for enc in encodings_to_try:
-                    print(f"尝试使用编码: {enc}")
+                    logger.info(f"尝试使用编码: {enc}")
                     try:
                         # 首先尝试多空格分隔
                         try:
@@ -636,7 +648,7 @@ class CSVProcessor:
                             has_header = False
                             if "成交日期" in first_line and "证券代码" in first_line:
                                 has_header = True
-                                print(f"检测到标题行，将跳过第一行")
+                                logger.info(f"检测到标题行，将跳过第一行")
                             
                             if has_header:
                                 # 跳过标题行，从第二行开始读取数据
@@ -645,34 +657,34 @@ class CSVProcessor:
                                 # 没有标题行，使用预定义的列名
                                 df = pd.read_csv(temp_file_path, sep=r'\s{2,}', encoding=enc, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
                             
-                            print(f"使用编码 {enc} 多空格分隔成功，行数: {len(df)}")
+                            logger.info(f"使用编码 {enc} 多空格分隔成功，行数: {len(df)}")
                             return CSVProcessor._clean_txt_dataframe(df)
                         except Exception as e1:
-                            print(f"使用编码 {enc} 多空格分隔失败: {e1}")
+                            logger.warning(f"使用编码 {enc} 多空格分隔失败: {e1}")
                             # 如果多空格分隔失败，尝试单空格分隔
                             try:
                                 df = pd.read_csv(temp_file_path, sep=r'\s+', encoding=enc, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
-                                print(f"使用编码 {enc} 单空格分隔成功，行数: {len(df)}")
+                                logger.info(f"使用编码 {enc} 单空格分隔成功，行数: {len(df)}")
                                 return CSVProcessor._clean_txt_dataframe(df)
                             except Exception as e2:
-                                print(f"使用编码 {enc} 单空格分隔失败: {e2}")
+                                logger.warning(f"使用编码 {enc} 单空格分隔失败: {e2}")
                                 # 如果空格分隔都失败，尝试固定宽度格式
                                 try:
                                     df = pd.read_fwf(temp_file_path, encoding=enc, header=None, names=expected_columns, dtype=dtype_spec)
-                                    print(f"使用编码 {enc} 固定宽度格式成功，行数: {len(df)}")
+                                    logger.info(f"使用编码 {enc} 固定宽度格式成功，行数: {len(df)}")
                                     return CSVProcessor._clean_txt_dataframe(df)
                                 except Exception as e3:
-                                    print(f"使用编码 {enc} 固定宽度格式失败: {e3}")
+                                    logger.warning(f"使用编码 {enc} 固定宽度格式失败: {e3}")
                                     # 最后尝试制表符分隔
                                     try:
                                         df = pd.read_csv(temp_file_path, sep='\t', encoding=enc, header=None, names=expected_columns, dtype=dtype_spec)
-                                        print(f"使用编码 {enc} 制表符分隔成功，行数: {len(df)}")
+                                        logger.info(f"使用编码 {enc} 制表符分隔成功，行数: {len(df)}")
                                         return CSVProcessor._clean_txt_dataframe(df)
                                     except Exception as e4:
-                                        print(f"使用编码 {enc} 制表符分隔失败: {e4}")
+                                        logger.warning(f"使用编码 {enc} 制表符分隔失败: {e4}")
                                         continue
                     except UnicodeDecodeError as ude:
-                        print(f"编码 {enc} 解码失败: {ude}")
+                        logger.warning(f"编码 {enc} 解码失败: {ude}")
                         continue
                 
                 raise Exception("所有编码和解析方法都失败了")
@@ -698,7 +710,7 @@ class CSVProcessor:
                 os.unlink(temp_file_path)
                 
         except Exception as e:
-            print(f"处理TXT文件时发生错误: {str(e)}")
+            logger.error(f"处理TXT文件时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
             raise Exception(f"处理TXT文件失败: {str(e)}")
@@ -723,7 +735,7 @@ class CSVProcessor:
 
             return df
         except Exception as e:
-            print(f"清理数据框时出错: {e}")
+            logger.error(f"清理数据框时出错: {e}")
             raise Exception(f"清理数据框失败: {e}")
     
     @staticmethod
@@ -776,7 +788,7 @@ class CSVProcessor:
         elif property_type == "relation":
             return {"relation": [{"id": str(value)}]}
         else:
-            print(f"警告: 不支持的属性类型 {property_type}")
+            logger.warning(f"警告: 不支持的属性类型 {property_type}")
             return None
 
 # 数据模型
@@ -803,50 +815,65 @@ async def read_root():
 async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"), limit: int = Form(5), batch_size: int = Form(10), delay: int = Form(1)):
     """上传并处理CSV/Excel文件"""
     
+    logger.info(f"开始处理文件上传请求: 文件名={file.filename}, 编码={encoding}, 限制={limit}, 批次大小={batch_size}, 延迟={delay}")
+    
     try:
         # 检查环境变量
         database_id = os.getenv("NOTION_DATABASE_ID", "")
         holdings_db_id = os.getenv("NOTION_HOLDINGS_DATABASE_ID", "")
         
+        logger.info(f"环境变量检查: 数据库ID={database_id}, 持仓数据库ID={holdings_db_id}")
+        
         if not database_id or not holdings_db_id:
+            logger.error("数据库ID未配置")
             raise HTTPException(status_code=500, detail="数据库ID未配置")
         
         # 读取文件内容
+        logger.info(f"开始读取文件内容: {file.filename}")
         content = await file.read()
+        logger.info(f"文件读取完成，大小: {len(content)} bytes")
         
         # 根据文件扩展名选择处理方法
         file_extension = file.filename.lower().split('.')[-1] if file.filename else ''
+        logger.info(f"文件类型: {file_extension}")
         
         if file_extension in ['xls', 'xlsx']:
             # 处理Excel文件
+            logger.info("开始处理Excel文件")
             df = CSVProcessor.process_excel(content)
+            logger.info(f"Excel文件处理成功，行数: {len(df)}, 列数: {len(df.columns)}")
         elif file_extension == 'csv':
             # 处理CSV文件
+            logger.info("开始处理CSV文件")
             df = CSVProcessor.process_csv(content.decode(encoding), encoding)
+            logger.info(f"CSV文件处理成功，行数: {len(df)}, 列数: {len(df.columns)}")
         elif file_extension == 'txt':
             # 处理TXT文件
             try:
-                print(f"开始处理TXT文件: {file.filename}, 大小: {len(content)} bytes")
+                logger.info(f"开始处理TXT文件: {file.filename}, 大小: {len(content)} bytes")
                 df = CSVProcessor.process_txt(content, encoding)
-                print(f"TXT文件处理成功，行数: {len(df)}, 列数: {len(df.columns)}")
-                print(f"列名: {list(df.columns)}")
+                logger.info(f"TXT文件处理成功，行数: {len(df)}, 列数: {len(df.columns)}")
+                logger.info(f"列名: {list(df.columns)}")
             except Exception as e:
-                print(f"TXT文件处理失败: {str(e)}")
+                logger.error(f"TXT文件处理失败: {str(e)}")
                 import traceback
                 traceback.print_exc()
                 raise HTTPException(status_code=400, detail=f"TXT文件处理失败: {str(e)}")
         else:
+            logger.error(f"不支持的文件格式: {file_extension}")
             raise HTTPException(status_code=400, detail="不支持的文件格式，请上传CSV、Excel或TXT文件")
         
         # 获取数据库结构
+        logger.info("获取数据库结构")
         db_structure = notion_api.get_database_structure(database_id)
         if not db_structure:
+            logger.error("无法获取数据库结构")
             raise HTTPException(status_code=500, detail="无法获取数据库结构")
         
         db_properties = db_structure.get("properties", {})
         
         # 打印数据库结构以便调试
-        print(f"交易数据库字段: {list(db_properties.keys())}")
+        logger.info(f"交易数据库字段: {list(db_properties.keys())}")
         
         # 创建映射关系 - 使用智能匹配来处理字段名中的空格
         def find_matching_field(csv_field, db_properties):
@@ -896,121 +923,139 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
             matched_field = find_matching_field(notion_field, db_properties)
             mapping[csv_field] = matched_field
         
+        logger.info(f"字段映射关系: {mapping}")
+        
         # 限制导入行数
+        original_count = len(df)
         if limit > 0 and len(df) > limit:
             df = df.head(limit)
+            logger.info(f"限制导入行数从 {original_count} 到 {len(df)}")
         
         # 获取所有已存在的委托编号
+        logger.info("获取已存在的委托编号")
         existing_entrust_numbers = notion_api.get_existing_entrust_numbers(database_id)
         
         # 导入数据
         success_count = 0
         skipped_count = 0
+        error_count = 0
+        
+        logger.info(f"开始导入数据，共 {len(df)} 行")
+        
         for index, row in df.iterrows():
-            # 检查委托编号是否已存在
-            entrust_no = str(row.get("委托编号", "")).strip()
-            if entrust_no and entrust_no in existing_entrust_numbers:
-                skipped_count += 1
-                print(f"跳过重复的委托编号: {entrust_no}")
-                continue
-            
-            properties_data = {}
-            
-            # 转换每列数据
-            for csv_col, notion_prop in mapping.items():
-                if csv_col in df.columns and notion_prop in db_properties:
-                    value = row[csv_col]
-                    prop_type = db_properties[notion_prop].get("type", "rich_text")
-                    
-                    # 添加调试信息
-                    print(f"处理字段: {csv_col} -> {notion_prop}, 值: {value}, 类型: {prop_type}")
-                    
-                    # 特殊处理交易日期字段，合并日期和时间
-                    if csv_col == "成交日期" and notion_prop == "交易日期":
-                        time_value = row.get("成交时间", "")
-                        if pd.notna(time_value) and time_value != "":
-                            date_time_str = f"{value} {time_value}"
-                            notion_value = CSVProcessor.convert_value_to_notion_format(date_time_str, prop_type)
+            try:
+                # 检查委托编号是否已存在
+                entrust_no = str(row.get("委托编号", "")).strip()
+                if entrust_no and entrust_no in existing_entrust_numbers:
+                    skipped_count += 1
+                    logger.info(f"跳过重复的委托编号: {entrust_no}")
+                    continue
+                
+                properties_data = {}
+                
+                # 转换每列数据
+                for csv_col, notion_prop in mapping.items():
+                    if csv_col in df.columns and notion_prop in db_properties:
+                        value = row[csv_col]
+                        prop_type = db_properties[notion_prop].get("type", "rich_text")
+                        
+                        # 添加调试信息
+                        logger.debug(f"处理字段: {csv_col} -> {notion_prop}, 值: {value}, 类型: {prop_type}")
+                        
+                        # 特殊处理交易日期字段，合并日期和时间
+                        if csv_col == "成交日期" and notion_prop == "交易日期":
+                            time_value = row.get("成交时间", "")
+                            if pd.notna(time_value) and time_value != "":
+                                date_time_str = f"{value} {time_value}"
+                                notion_value = CSVProcessor.convert_value_to_notion_format(date_time_str, prop_type)
+                            else:
+                                notion_value = CSVProcessor.convert_value_to_notion_format(value, prop_type)
                         else:
                             notion_value = CSVProcessor.convert_value_to_notion_format(value, prop_type)
-                    else:
-                        notion_value = CSVProcessor.convert_value_to_notion_format(value, prop_type)
+                        
+                        if notion_value is not None:
+                            properties_data[notion_prop] = notion_value
+                            logger.debug(f"成功设置字段 {notion_prop}: {notion_value}")
+                        else:
+                            logger.warning(f"警告: 字段 {notion_prop} 值为空或无效，跳过设置")
+                
+                # 处理股票持仓关联
+                if "股票持仓" in db_properties and "证券代码" in row:
+                    # 获取交易市场信息
+                    stock_code = str(row["证券代码"]).strip()
+                    stock_name = str(row["证券名称"]).strip()
+                    market = str(row.get("交易市场", "")).strip()
                     
-                    if notion_value is not None:
-                        properties_data[notion_prop] = notion_value
-                        print(f"成功设置字段 {notion_prop}: {notion_value}")
-                    else:
-                        print(f"警告: 字段 {notion_prop} 值为空或无效，跳过设置")
-            
-            # 处理股票持仓关联
-            if "股票持仓" in db_properties and "证券代码" in row:
-                # 获取交易市场信息
-                stock_code = str(row["证券代码"]).strip()
-                stock_name = str(row["证券名称"]).strip()
-                market = str(row.get("交易市场", "")).strip()
-                
-                # 确保股票代码不为空
-                if not stock_code:
-                    print(f"警告: 证券代码为空，跳过持仓关联")
-                    continue
-                
-                print(f"正在处理股票持仓关联: {stock_code} - {stock_name} - {market}")
-                
-                # 确保股票代码不为空
-                if not stock_code:
-                    print(f"警告: 证券代码为空，跳过持仓关联")
-                    continue
-                
-                print(f"正在处理股票持仓关联: {stock_code} - {stock_name} - {market}")
-                
-                # 查询持仓数据库中是否已存在此股票
-                holding = notion_api.query_holdings(holdings_db_id, stock_code)
-                
-                if holding:
-                    # 如果存在，使用现有记录
-                    properties_data["股票持仓"] = {
-                        "relation": [{"id": holding["id"]}]
-                    }
-                    print(f"找到现有持仓记录: {stock_code} - {stock_name}")
-                else:
-                    # 如果不存在，创建新记录
-                    print(f"未找到持仓记录 {stock_code}，正在创建新记录...")
-                    new_holding_id = notion_api.create_holding(holdings_db_id, stock_code, stock_name, market)
-                    if new_holding_id:
+                    # 确保股票代码不为空
+                    if not stock_code:
+                        logger.warning(f"警告: 证券代码为空，跳过持仓关联")
+                        continue
+                    
+                    logger.debug(f"正在处理股票持仓关联: {stock_code} - {stock_name} - {market}")
+                    
+                    # 查询持仓数据库中是否已存在此股票
+                    holding = notion_api.query_holdings(holdings_db_id, stock_code)
+                    
+                    if holding:
+                        # 如果存在，使用现有记录
                         properties_data["股票持仓"] = {
-                            "relation": [{"id": new_holding_id}]
+                            "relation": [{"id": holding["id"]}]
                         }
-                        print(f"成功创建新持仓记录: {stock_code} - {stock_name}")
+                        logger.info(f"找到现有持仓记录: {stock_code} - {stock_name}")
                     else:
-                        # 如果创建失败，记录错误但继续处理
-                        print(f"警告: 无法为股票 {stock_code} 创建持仓记录")
-            
-            # 添加备注字段，标注为外部导入
-            if "备注" in db_properties:
-                # 使用UTC+8时区
-                from datetime import timezone, timedelta
-                tz = timezone(timedelta(hours=8))
-                import_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-                properties_data["备注"] = {
-                    "rich_text": [{"text": {"content": f"外部导入 - {import_time}"}}]
-                }
-            
-            # 创建页面
-            if notion_api.create_page(database_id, properties_data):
-                success_count += 1
-                # 如果有委托编号，添加到已存在集合中，防止同一批次内重复
-                if entrust_no:
-                    existing_entrust_numbers.add(entrust_no)
-            
-            # 添加延迟避免API限制
-            if (index + 1) % batch_size == 0:
-                time.sleep(delay)
+                        # 如果不存在，创建新记录
+                        logger.info(f"未找到持仓记录 {stock_code}，正在创建新记录...")
+                        new_holding_id = notion_api.create_holding(holdings_db_id, stock_code, stock_name, market)
+                        if new_holding_id:
+                            properties_data["股票持仓"] = {
+                                "relation": [{"id": new_holding_id}]
+                            }
+                            logger.info(f"成功创建新持仓记录: {stock_code} - {stock_name}")
+                        else:
+                            # 如果创建失败，记录错误但继续处理
+                            logger.warning(f"警告: 无法为股票 {stock_code} 创建持仓记录")
+                
+                # 添加备注字段，标注为外部导入
+                if "备注" in db_properties:
+                    # 使用UTC+8时区
+                    from datetime import timezone, timedelta
+                    tz = timezone(timedelta(hours=8))
+                    import_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+                    properties_data["备注"] = {
+                        "rich_text": [{"text": {"content": f"外部导入 - {import_time}"}}]
+                    }
+                
+                # 创建页面
+                if notion_api.create_page(database_id, properties_data):
+                    success_count += 1
+                    logger.info(f"成功导入第 {index + 1} 行数据")
+                    # 如果有委托编号，添加到已存在集合中，防止同一批次内重复
+                    if entrust_no:
+                        existing_entrust_numbers.add(entrust_no)
+                else:
+                    error_count += 1
+                    logger.error(f"创建页面失败，第 {index + 1} 行")
+                
+                # 添加延迟避免API限制
+                if (index + 1) % batch_size == 0:
+                    logger.info(f"已处理 {index + 1} 行，延迟 {delay} 秒")
+                    time.sleep(delay)
+                    
+            except Exception as e:
+                error_count += 1
+                logger.error(f"处理第 {index + 1} 行时发生错误: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        logger.info(f"导入完成: 成功 {success_count} 行，跳过 {skipped_count} 行，错误 {error_count} 行")
         
         return JSONResponse(content={
             "success": True,
-            "message": f"成功导入 {success_count} 行数据，跳过 {skipped_count} 行重复数据",
+            "message": f"成功导入 {success_count} 行数据，跳过 {skipped_count} 行重复数据，错误 {error_count} 行",
             "imported_count": success_count,
             "skipped_count": skipped_count,
+            "error_count": error_count,
             "total_count": len(df)
         })
         
@@ -1019,7 +1064,7 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
         raise
     except Exception as e:
         # 捕获所有其他异常并打印详细信息
-        print(f"处理文件时发生未预期的错误: {str(e)}")
+        logger.error(f"处理文件时发生未预期的错误: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"处理文件时出错: {str(e)}")

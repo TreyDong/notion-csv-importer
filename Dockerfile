@@ -14,15 +14,18 @@ COPY requirements.txt .
 # 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 创建必要的目录
+RUN mkdir -p templates static
+
+# 创建日志目录
+RUN mkdir -p /app/logs
+
 # 复制应用代码
 COPY app.py .
 
 # 复制模板和静态文件
 COPY templates/ templates/
 COPY static/ static/
-
-# 创建必要的目录
-RUN mkdir -p templates static
 
 # 暴露端口
 EXPOSE 8000
