@@ -136,10 +136,36 @@ gunicorn -w 4 -b 0.0.0.0:8000 "app:create_app()"
 - 标记镜像版本
 - 推送镜像到Docker Hub
 
+### WSL环境Docker构建
+
+如果您在WSL（Windows Subsystem for Linux）环境中，可以使用以下命令直接构建和推送：
+
+```bash
+# 构建镜像（使用Windows Docker Desktop）
+docker.exe build -t treydong/notion-csv-importer:latest .
+
+# 推送镜像到Docker Hub
+docker.exe push treydong/notion-csv-importer:latest
+```
+
+这种方法利用WSL与Windows Docker Desktop的集成，无需在WSL中启动Docker守护进程。
+
+### 直接拉取使用
+
+您也可以直接拉取已构建的镜像：
+
+```bash
+# 拉取最新镜像
+docker pull treydong/notion-csv-importer:latest
+
+# 使用docker-compose启动
+docker-compose up -d
+```
+
 ## 配置说明
 ### 环境变量
 
-| 变量名 | 描述 | 必需 |
+变量名 | 描述 | 必需 |
 |---------|------|------|
 | NOTION_TOKEN | Notion API集成token | 是 |
 | NOTION_DATABASE_ID | 交易记录数据库ID | 是 |
