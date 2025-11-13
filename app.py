@@ -593,12 +593,12 @@ class CSVProcessor:
     def process_txt(file_content: bytes, encoding: str = 'gbk') -> pd.DataFrame:
         """处理TXT文件（固定宽度或多空格分隔）"""
         try:
-            from io import StringIO
+            from io import BytesIO
             import tempfile
             import os
             
             # 创建临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.txt', mode='w+b') as temp_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.txt', mode='wb') as temp_file:
                 temp_file.write(file_content)
                 temp_file_path = temp_file.name
             
@@ -619,31 +619,63 @@ class CSVProcessor:
                     '股东账号': str
                 }
 
-                # 首先尝试多空格分隔
-                try:
-                    df = pd.read_csv(temp_file_path, sep=r'\s{2,}', encoding=encoding, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
-                    print(f"多空格分隔成功，行数: {len(df)}")
-                except Exception as e1:
-                    print(f"多空格分隔失败: {e1}")
-                    # 如果多空格分隔失败，尝试单空格分隔
+                # 尝试不同的编码格式
+                encodings_to_try = [encoding, 'utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
+                
+                for enc in encodings_to_try:
+                    print(f"尝试使用编码: {enc}")
                     try:
-                        df = pd.read_csv(temp_file_path, sep=r'\s+', encoding=encoding, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
-                        print(f"单空格分隔成功，行数: {len(df)}")
-                    except Exception as e2:
-                        print(f"单空格分隔失败: {e2}")
-                        # 如果空格分隔都失败，尝试固定宽度格式
+                        # 首先尝试多空格分隔
                         try:
-                            df = pd.read_fwf(temp_file_path, encoding=encoding, header=None, names=expected_columns, dtype=dtype_spec)
-                            print(f"固定宽度格式成功，行数: {len(df)}")
-                        except Exception as e3:
-                            print(f"固定宽度格式失败: {e3}")
-                            # 最后尝试制表符分隔
+                            # 先读取文件的前几行原始内容来判断是否有标题行
+                            with open(temp_file_path, 'rb') as f:
+                                first_line = f.readline().decode(enc).strip()
+                                second_line = f.readline().decode(enc).strip()
+                            
+                            # 检查第一行是否包含列名
+                            has_header = False
+                            if "成交日期" in first_line and "证券代码" in first_line:
+                                has_header = True
+                                print(f"检测到标题行，将跳过第一行")
+                            
+                            if has_header:
+                                # 跳过标题行，从第二行开始读取数据
+                                df = pd.read_csv(temp_file_path, sep=r'\s{2,}', encoding=enc, engine='python', skiprows=1, header=None, names=expected_columns, dtype=dtype_spec)
+                            else:
+                                # 没有标题行，使用预定义的列名
+                                df = pd.read_csv(temp_file_path, sep=r'\s{2,}', encoding=enc, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
+                            
+                            print(f"使用编码 {enc} 多空格分隔成功，行数: {len(df)}")
+                            return CSVProcessor._clean_txt_dataframe(df)
+                        except Exception as e1:
+                            print(f"使用编码 {enc} 多空格分隔失败: {e1}")
+                            # 如果多空格分隔失败，尝试单空格分隔
                             try:
-                                df = pd.read_csv(temp_file_path, sep='\t', encoding=encoding, header=None, names=expected_columns, dtype=dtype_spec)
-                                print(f"制表符分隔成功，行数: {len(df)}")
-                            except Exception as e4:
-                                print(f"制表符分隔失败: {e4}")
-                                raise e4
+                                df = pd.read_csv(temp_file_path, sep=r'\s+', encoding=enc, engine='python', header=None, names=expected_columns, dtype=dtype_spec)
+                                print(f"使用编码 {enc} 单空格分隔成功，行数: {len(df)}")
+                                return CSVProcessor._clean_txt_dataframe(df)
+                            except Exception as e2:
+                                print(f"使用编码 {enc} 单空格分隔失败: {e2}")
+                                # 如果空格分隔都失败，尝试固定宽度格式
+                                try:
+                                    df = pd.read_fwf(temp_file_path, encoding=enc, header=None, names=expected_columns, dtype=dtype_spec)
+                                    print(f"使用编码 {enc} 固定宽度格式成功，行数: {len(df)}")
+                                    return CSVProcessor._clean_txt_dataframe(df)
+                                except Exception as e3:
+                                    print(f"使用编码 {enc} 固定宽度格式失败: {e3}")
+                                    # 最后尝试制表符分隔
+                                    try:
+                                        df = pd.read_csv(temp_file_path, sep='\t', encoding=enc, header=None, names=expected_columns, dtype=dtype_spec)
+                                        print(f"使用编码 {enc} 制表符分隔成功，行数: {len(df)}")
+                                        return CSVProcessor._clean_txt_dataframe(df)
+                                    except Exception as e4:
+                                        print(f"使用编码 {enc} 制表符分隔失败: {e4}")
+                                        continue
+                    except UnicodeDecodeError as ude:
+                        print(f"编码 {enc} 解码失败: {ude}")
+                        continue
+                
+                raise Exception("所有编码和解析方法都失败了")
                 
                 # 清理列名，去除空格
                 df.columns = [col.strip() for col in df.columns]
@@ -666,7 +698,33 @@ class CSVProcessor:
                 os.unlink(temp_file_path)
                 
         except Exception as e:
-            raise Exception(f"处理TXT文件失败: {e}")
+            print(f"处理TXT文件时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise Exception(f"处理TXT文件失败: {str(e)}")
+    
+    @staticmethod
+    def _clean_txt_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        """清理和格式化TXT数据框"""
+        try:
+            # 清理列名，去除空格
+            df.columns = [col.strip() for col in df.columns]
+            
+            # 去除空列
+            df = df.dropna(axis=1, how='all')
+            
+            # 清理数据 - 对所有字段都应用Excel公式清理
+            for col in df.columns:
+                if col not in ['证券代码', '委托编号', '成交编号', '股东账号']:
+                    # 非字符串字段才转换类型
+                    df[col] = df[col].astype(str)
+                df[col] = df[col].apply(CSVProcessor.clean_excel_formula)
+                df[col] = df[col].str.strip()
+
+            return df
+        except Exception as e:
+            print(f"清理数据框时出错: {e}")
+            raise Exception(f"清理数据框失败: {e}")
     
     @staticmethod
     def convert_value_to_notion_format(value: Any, property_type: str) -> Optional[Dict]:
@@ -699,7 +757,17 @@ class CSVProcessor:
                     for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%Y/%m/%d %H:%M:%S"]:
                         try:
                             date_obj = datetime.strptime(value, fmt)
-                            return {"date": {"start": date_obj.isoformat()}}
+                            # 如果包含时间信息，需要添加GMT+8时区信息
+                            if "%H" in fmt:
+                                from datetime import timezone, timedelta
+                                # 创建GMT+8时区
+                                gmt8 = timezone(timedelta(hours=8))
+                                # 将本地时间设置为GMT+8时区
+                                date_obj = date_obj.replace(tzinfo=gmt8)
+                                return {"date": {"start": date_obj.isoformat()}}
+                            else:
+                                # 对于只有日期的字段，保持原样
+                                return {"date": {"start": date_obj.isoformat()}}
                         except ValueError:
                             continue
                 return {"date": {"start": str(value)}}
@@ -757,7 +825,16 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
             df = CSVProcessor.process_csv(content.decode(encoding), encoding)
         elif file_extension == 'txt':
             # 处理TXT文件
-            df = CSVProcessor.process_txt(content, encoding)
+            try:
+                print(f"开始处理TXT文件: {file.filename}, 大小: {len(content)} bytes")
+                df = CSVProcessor.process_txt(content, encoding)
+                print(f"TXT文件处理成功，行数: {len(df)}, 列数: {len(df.columns)}")
+                print(f"列名: {list(df.columns)}")
+            except Exception as e:
+                print(f"TXT文件处理失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(status_code=400, detail=f"TXT文件处理失败: {str(e)}")
         else:
             raise HTTPException(status_code=400, detail="不支持的文件格式，请上传CSV、Excel或TXT文件")
         
@@ -937,7 +1014,14 @@ async def upload_file(file: UploadFile = File(...), encoding: str = Form("gbk"),
             "total_count": len(df)
         })
         
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
     except Exception as e:
+        # 捕获所有其他异常并打印详细信息
+        print(f"处理文件时发生未预期的错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"处理文件时出错: {str(e)}")
 
 @app.get("/config")
